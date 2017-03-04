@@ -34,7 +34,7 @@ These are the components to build it:
 
 The accelerometer sensor should be attached sideways (Z axis horizontal) to the telescope optical tube, so that its X and Y readings change with telescope movement, but Z reading remans at or near to zero. It should be aligned so that the Y axis points upwards when the telescope is aimed at Zenith.
 
-The magnetometer should be laid horizontal and aligned with the mount, but away from the microcontroller's WiFi antenna and from the battery (USB power bank).
+The magnetometer should be laid horizontally and aligned with the mount, but away from the microcontroller's WiFi antenna and from the battery (USB power bank).
 
 On a tabletop reflector telescope, the sensors would look like this:
 ![alt text](http://atehortua.com/vladi/wp-content/uploads/2017/03/assembly.jpg "Sensors on a tabletop Reflector")
