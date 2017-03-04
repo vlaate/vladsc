@@ -53,4 +53,4 @@ This is still a work in progress, and many features are not yet implemented, suc
 
 ##Notes
 
-This code uses the HMC5886 [library](https://github.com/Fabio-Varesano-Association/freeimu/tree/master/libraries/HMC58X3) from Fabio Varesano, which did not work on the 32 bit ESP8266. I've made a pull request of the necessary changes to the library's git admin, but meanwhile, if you need it to work, just edit the HMC58X3.h and HMC58X3.cpp files from the library and replace all occurrences of "int" with "int16_t" and "long" with "int32_t", that should do it.
+This code uses, among others the HMC58X3 [library](https://github.com/Fabio-Varesano-Association/freeimu/tree/master/libraries/HMC58X3) from Fabio Varesano, which initially did not work on the 32 bit ESP8266. I've made a pull request of the necessary changes to the library's git admin, but meanwhile, if you need it to work, just edit the HMC58X3.h and HMC58X3.cpp files from the library and replace all occurrences of "int" with "int16_t" and "long" with "int32_t", that should do it.
