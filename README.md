@@ -17,6 +17,7 @@ In order to achieve the above, the following sacrifices had to be made:
 * One star alignment with SkySafari is critical, so some basic knowledge of a sky object to align with is necessary (moon, Orion's belt, Sirius, etc).
 
 ##The Hardware
+
 The Circuit is very simple, and looks like this:
 
 ![alt text](http://atehortua.com/vladi/wp-content/uploads/2017/03/schematic.jpg "VLADSC Mark I schematic")
@@ -49,3 +50,7 @@ This is still a work in progress, and many features are not yet implemented, suc
 * Web configuration menu, so that SSID, password, and even calibration/smoothing parameters can be entered via web browser (and saved to EEPROM) instead of being hardcoded.
 * Hardware user interface, such as LCD and buttons, to make it easier to operate for end-users who are not Arduino enthusiasts.
 * Integration with the free SkyEye app, which is starting to support sensors.
+
+##Notes
+
+This code uses the HMC5886 [library](https://github.com/Fabio-Varesano-Association/freeimu/tree/master/libraries/HMC58X3) from Fabio Varesano, which did not work on the 32 bit ESP8266. I've made a pull request of the necessary changes to the library's git admin, but meanwhile, if you need it to work, just edit the HMC58X3.h and HMC58X3.cpp files from the library and replace all occurrences of "int" with "int16_t" and "long" with "int32_t", that should do it.
