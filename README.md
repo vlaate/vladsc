@@ -31,7 +31,7 @@ These are the components to build it:
 * Arduino programming environment (PC or Mac, Arduino IDE, data micro USB cable, etc).
 * Android or iOS Tablet with the SkySafari 5 Plus or Pro app installed.
 
-The accelerometer sensor should be attached sideways (Z axis horizontal) to the telescope optical tube, so that its X and Y readings change with telescope movement, but Z reading remans at or near to zero.
+The accelerometer sensor should be attached sideways (Z axis horizontal) to the telescope optical tube, so that its X and Y readings change with telescope movement, but Z reading remans at or near to zero. It should be aligned so that the Y axis points upwards when the telescope is aimed at Zenith.
 
 The magnetometer should be laid horizontal and aligned with the mount, but away from the microcontroller's WiFi antenna and from the battery (USB power bank).
 
