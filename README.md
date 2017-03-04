@@ -37,6 +37,8 @@ The accelerometer sensor should be attached sideways (Z axis horizontal) to the 
 The magnetometer should be laid horizontally and aligned with the mount, but away from the microcontroller's WiFi antenna and from the battery (USB power bank).
 
 On a tabletop reflector telescope, the sensors would look like this:
+
+
 ![alt text](http://atehortua.com/vladi/wp-content/uploads/2017/03/assembly.jpg "Sensors on a tabletop Reflector")
 
 
