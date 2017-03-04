@@ -14,7 +14,7 @@ In order to achieve the above, the following sacrifices had to be made:
 * **Very** Low Accuracy, because of the use of accelerometer and magnetometer sensors instead of optical encoders, the high resolution of optical encoders is lost, along with their high precision and repeatability.
 * Because of the above, it's best used with a low magnification eyepiece that provides a *True Field Of View* of at least 2º.
 * It's more of an aiding device for exploring the sky via star hopping, than a "push to" feature to zero in on difficult sky objects.
-* One star alignment with Skysafari is critical, so some basic knowledge of a sky object to align with is necessary (moon, Orion's belt, Sirius, etc).
+* One star alignment with SkySafari is critical, so some basic knowledge of a sky object to align with is necessary (moon, Orion's belt, Sirius, etc).
 
 ##The Hardware
 The Circuit is very simple, and looks like this:
@@ -42,10 +42,10 @@ On a tabletop reflector telescope, the sensors would look like this:
 
 ##Roadmap
 
-This is still a work in progess, and many features are not yet implemented, such as:
-* Compass tilt compensation, so that the compass does not need to be horizontal and can be attached to the telescope's optical tube, thus providing support for telescope mounts like the "ball dobsonian".
-* Support for other sensors, and Integrated Measurement Units, makig it easier to use with smaller tripods.
-* WiFi access point emulation, so that the DSC creates its own wifi network and can be used away from routers. 
+This is still a work in progress, and many features are not yet implemented, such as:
+* Compass tilt compensation, so that the compass does not need to be horizontal and can be attached to the telescope's optical tube, thus providing support for telescope mounts like the "ball dobsonian" or travel tripods.
+* Support for other sensors, and Integrated Measurement Units, making it easier to use with smaller tripods.
+* WiFi access point emulation, so that the DSC creates its own WiFi network and can be used away from routers. 
 * Web configuration menu, so that SSID, password, and even calibration/smoothing parameters can be entered via web browser (and saved to EEPROM) instead of being hardcoded.
-* Hardware user interface, such as LCD and buttons, to make it easier to operate for end-users whi are not Arduino enthusiasts.
+* Hardware user interface, such as LCD and buttons, to make it easier to operate for end-users who are not Arduino enthusiasts.
 * Integration with the free SkyEye app, which is starting to support sensors.
