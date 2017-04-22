@@ -1,10 +1,10 @@
 /*
   Very Low Accuracy Digital Setting Circles
 
-  This is a simple adapter to connect an accelerometer (MMA7455)
-  and a compass (HMC58X3) via WiFi to SkySafari app, in order to
-  provide basic (low accuracy) "Push To" features to telescope mounts
-  that cant' fit optical encoders, such as travel tripods or tabletops.
+  This is a simple adapter to connect an accelerometer+compass (LSM303DLHC)
+  via WiFi to the SkySafari Android/iOS app, in order to provide basic (low accuracy)
+  "Push To" style features to telescope mounts that cant' fit
+  optical encoders, such as travel tripods, tabletops, etc.
 
   Copyright (c) 2017 Vladimir Atehortua. All rights reserved.
 
@@ -23,191 +23,227 @@
 
 /**
     Hardware used:
-     ESP8266 development board (version 12E), I used the HiLetgo model https://www.amazon.com/gp/product/B010O1G1ES)
-     MMA7455 sensor module, I used this one: https://arduino-info.wikispaces.com/accelerometer-MMA7455
-     HMC5883 sensor module, I used the GY271 variant.
 
-     ESP8266 pinout:
-     SDA = GPIO2 = PIN_D4
-     SCL = GPIO0 = PIN_D3
+    ESP8266 development board (version 12E) or ESP-01. I used the HiLetgo model https://www.amazon.com/gp/product/B010O1G1ES for development and ESP-01 for final assembly.
+    LSM303DLHC sensor module, I used this one: https://www.aliexpress.com/item/1-pcs-GY-511-LSM303DLHC-Module-E-Compass-3-Axis-Accelerometer-3-Axis-Magnetometer-Module-Sensor/1956617486.html
 
-     MMA7455 pinout:
+    ESP8266 pinout:
+     SDA = GPIO2 = PIN_D4   (use 3.3K pullup to VCC)
+     SCL = GPIO0 = PIN_D3   (use 3.3K pullup to VCC)
+
+    LSM303 pinout:
      SDA, SCL and GND: matching the ESP8266
      VCC = 3V3 pin on the ESP8266
-     CS must be set high (3V3 or VCC) or it wont work with the ESP8266, even if its not necesary with a 5V arduino.
-     The acelerometer is meant to be used sideways (with the Z axis horizontal, measuring near zero G)
-
-     HMC5883 (or GY271) pinout:
-     SDA, SCL and GND: matching the ESP8266
-     VCC = 3V3 pin on the ESP8266
-     DRDY pin disconnected
-     The HMC5883 is meant to be used on a permanently horizontal position in the mount (not attached to the telescope tube)
+     The sensor is meant to be placed sideways (with the Z axis horizontal, on the left side of the telescope OTA)
 */
 
-#define MMA7455_ADDRESS 0x1D      //I2C Adsress for the sensor
-#define MMA7455_MODE_CONTROL 0x16 //Call the sensors Mode Control
-#define MMA7455_2G_MODE 0x05      //Set Sensitivity to 2g
-#define MMA7455_X_OUT 0x06        //Register for reading the X-Axis
-#define MMA7455_Y_OUT 0x07        //Register for reading the Y-Axis
-#define MMA7455_Z_OUT 0x08        //Register for reading the Z-Axis
-#define MMA7455_STATUS 0x09       // Status Register
-#define MMA7455_DRDY 0            // bit in the status response that signals "ready"
-#define MMA7455_XOFFL 0x10        // Read/Write, Offset Drift X LSB
+#include <Wire.h>
+#include <LSM303.h>
+#include <ESP8266WiFi.h>
+#define RADIAN_TO_STEPS   5092.95818f  // ratio to convert from radians to encoder steps, using a "full circle" of 32000 steps as the Skysafari setting for basic encoder
+#define STEPS_IN_FULL_CIRCLE  32000    // number of steps in a full circle, should match the skysafari setting for basic encoder
+#define EMA_WEIGHT   0.05f  // weight coefficient for new values vs old values used in the exponential moving average smoothing algorithm
 
-#include "Wire.h"             // for I2C
-#include <ESP8266WiFi.h>      // for WiFi
-#include <HMC58X3.h>          // magnetometer library, it's .cpp and .h must be modified to work with ESP8266: replace all "int" with "int16_t"
-
-const char* ssid = "PennyGetYourOwnWiFi";   // WiFi network ID to connect to
-const char* password = "****";          // Password for Wifi Network
-const int led = 13;                         // ESP8266 in-built led, to indicate some status
+// To give sufficient CPU time to the TCP Server, a time delta between measurements is enforced:
+#define MEASUREMENT_PERIOD  25    // how many milliseconds must have elapsed since last measurement in order to take a new one
+long last_measurement = 0;  // millisecond timestamp of last measurement, to measure only every XXX milliseconds
 
 WiFiServer server(4030);    // 4030 is the default port Skysafari uses for WiFi connection to telescopes
 WiFiClient remoteClient;    // represents the connection to the remote app (Skysafari)
+#define WiFi_Access_Point_Name "vlaDSC-Telescope"   // Name of the WiFi access point this device will create for your tablet/phone to connect to.
 
-/* Simulated encoders:
-   The "basic encoder system" option in skysafari allows us to specify a number of steps per revolution for each encoder.
-   Lets call this number of "steps per revolution" M, AZ the azimuth encoder and AL the altitude encoder:
-   if altitude was zero: AZ = 0 means North, AZ = M/4 means East, AZ = M/2 means Soutch, and AZ = 3M/4 means West
-   if azimuth was zero:  AL = 0 means North, AL = M/4 means Zenith, AL = M/2 means South, AL = 3M/4 means opposite to zenith (down through earth)
+/** Extends the Pololu LSM303 driver class, to add calibration of accelerometer data, and provide both altitude and azimuth readings after smoothing and in optical encoder style.
 */
+class IMU : public LSM303
+{
+  // Calibration of accelerometer: These are the minimum and maximum values measured for X, Y and Z:
+  LSM303::vector<int16_t> acc_min = (LSM303::vector<int16_t>) {-16649, -16448, -16654};
+  LSM303::vector<int16_t> acc_max = (LSM303::vector<int16_t>) {+16108, +16568, +15599};
 
-#define RADIAN_TO_STEPS   636.61977236758f  // ratio to convert from radians to encoder steps, using a "full circle" of 4000 steps as the Skysafari setting for basic encoder
-#define STEPS_IN_FULL_CIRCLE  4000          // number of steps in a full circle, should match the skysafari setting for basic encoder
-float azimuthReading;  // integer version of the azimuth reading, as "fraction of full_circle"
-float altitudeReading; // integer version of the altitude reading, as "fraction of full_circle"
+  // measurements are stored here after calling calculatePosition();
+  public : float azimuthReading;  // multiply this by 180 / PI to get degrees
+  public : float altitudeReading; // multiply this by 180 / PI to get degrees
 
-/** Calibration of accelerometer:
-    
-    Unlike the magnetometer, the accelerometer calibration values are stable over time/location, so it is best to capture them only once and leave them fixed.
+  public : float smoothAzimuthReading;  // value is already converted from radians to steps, and smoothing alorithm applied
+  public : float smoothAltitudeReading; // value is already converted from radians to steps, and smoothing alorithm applied
 
-    You need to find these values for each accelerometer sensor/module. 
-    You need to set up the accelerometer in a position that can rotate 360º vertically (could be your telescope mount without the OTA, or something else), and
-    then execute code that measures X and Y, while very slowly rotating the sensor two full vertical circles.  It must be done slowly to avoid the force
-    applied by your hand from altering the measurements of the gravity force.
+  vector<float> East = {0, 0, 0};
 
-    Code to measure X and Y during calibration is already contained in the performAltitudeMeasurement() function, but it's commented out.
-    Uncomment that code, measure your calibration values, and comment it again for normal DSC use.
-    
-*/
-int16_t ALminX = -61;   // minimum X value at -1G for this particular accelerometer
-int16_t ALmaxX = 65;    // maxmimum X value at 1G for this particular accelerometer
-int16_t ALminY = -79;   // minimum Y value at -1G for this particular accelerometer
-int16_t ALmaxY = 49;    // maxmimum Y value at 1G for this particular accelerometer
+  public : void calculatePosition()
+    {
+      vector<int> zAxis = (vector<int>) {0, 0, 1};  // the heading will be measured relative to Z axis, make sure to place your sensor in a vertical position (Z axis pointing to the horizon)
 
-float calibratingX;     // only used dured accelerometer calibration
-float calibratingY;     // only used dured accelerometer calibration
+      // get raw accelerometer data:
+      vector<float> acc_reading = {a.x, a.y, a.z};
+      // calibrate accelerometer bias and scale using measured maximums and minimums, and apply smoothing algorithm to reduce outlier values:
+      acc_reading.x = acc_reading.x * (1 - EMA_WEIGHT) + EMA_WEIGHT * (32767.0 * ((float)a.x - (float)acc_min.x) / ((float)acc_max.x - (float)acc_min.x) - 16383.5);
+      acc_reading.y = acc_reading.y * (1 - EMA_WEIGHT) + EMA_WEIGHT * (32767.0 * ((float)a.y - (float)acc_min.y) / ((float)acc_max.y - (float)acc_min.y) - 16383.5);
+      acc_reading.z = acc_reading.z * (1 - EMA_WEIGHT) + EMA_WEIGHT * (32767.0 * ((float)a.z - (float)acc_min.z) / ((float)acc_max.z - (float)acc_min.z) - 16383.5);
 
+      // calculate the altitude as an angle from 0º to 90º, see equation #26 from https://cache.freescale.com/files/sensors/doc/app_note/AN3461.pdf
+      altitudeReading = -1 * atan2(acc_reading.y, sqrt(acc_reading.x * acc_reading.x + acc_reading.z * acc_reading.z));
 
-/**
-   Compass offsets:
-   When you turn on the device, you need top do a full azimuth rotation in order to calibrate the compass.
-   If during use, a new maximum is found, the offset calibration is updated:
-*/
-int16_t maxX, maxY, minX, minY; // needed to calculate offset for compass
-HMC58X3 compass;  // compass API object
-#define LOCAL_MAGNETIC_DECLINATION 0.0f  // local magnetic declination, to convert magnetic heading to true north if desired (but Skysafari alignment does it better)
+      // now adapt the 0º to 90º reading to the 0º to 360º style encoder output expected by Skysafari:
+      if (acc_reading.x > 0 && acc_reading.y < 0)
+      {
+        // first quadrant
+      }
+      else if (acc_reading.x < 0 && acc_reading.y < 0)
+      {
+        // second quadrant
+        altitudeReading = PI - altitudeReading;
+      }
+      else if (acc_reading.x < 0 && acc_reading.y > 0)
+      {
+        // third quadrant
+        altitudeReading = PI - altitudeReading;
+      }
+      else if (acc_reading.x > 0 && acc_reading.y > 0)
+      {
+        altitudeReading = 2 * PI + altitudeReading;
+        // 4th quadrant
+      }
 
-/* To give sufficient CPU time to the TCP Server, a time delta between measurements is enforced: */
-long last_measurement = 0;  // millisecond timestamp of last measurement, to measure only every XXX milliseconds
-#define MEASUREMENT_PERIOD  25    // how many milliseconds must have elapsed since last measurement in order to take a new one
+      // calibrate magnetometer bias and scale using measured maximums and minimums (notice we don't smooth mag readings, it won't help):
+      vector<float> mag_reading = {m.x, m.y, m.z};
+      mag_reading.x = 10000.0 * ((float)m.x - (float)m_min.x) / ((float)m_max.x - (float)m_min.x) - 5000.0;
+      mag_reading.y = 10000.0 * ((float)m.y - (float)m_min.y) / ((float)m_max.y - (float)m_min.y) - 5000.0;
+      mag_reading.z = 10000.0 * ((float)m.z - (float)m_min.z) / ((float)m_max.z - (float)m_min.z) - 5000.0;
 
-#define ALT_EMA_WEIGHT   0.05f  // weight coefficient for new values vs old values used in the moving average smoothing algorithm for Altitude
-#define AZ_EMA_WEIGHT    0.05f  // weight coefficient for new values vs old values used in the moving average smoothing algorithm for Azimuth
+      // calculate the vector pointing "East" by cross product of magnetometer (north) x accelerometer (up)
+      vector_cross(&mag_reading, &acc_reading, &East);
 
+      // normalize both the magnetic North and the new East vector, to be able to use them for scalar projection:
+      vector_normalize(&mag_reading);
+      vector_normalize(&East);
 
-/* The typical Arduino setup function: */
+      // use scalar proyections of Z axis to East and North vectors, to calculate the azimuth heading relative to Z axis:
+      float azimuthReading = atan2(vector_dot(&East, &zAxis), vector_dot(&mag_reading, &zAxis)); 
+
+      // for sensors placed left of the scope, the Z axis heading seems to need 90 degree correction
+      azimuthReading = azimuthReading - PI / 2;
+
+      // shift negative values to 0-360 range:
+      if (azimuthReading < 0)
+      {
+        azimuthReading += 2 * PI;
+      }
+
+      // convert angle from radians to encoder steps (which is what skysafari wants):
+      float newazimuthReading = azimuthReading * RADIAN_TO_STEPS;
+      float newAltitudeReading = altitudeReading * RADIAN_TO_STEPS;
+
+      /* Final smoothing algotithm: */
+      // First, a special trick for averaging around North, where low values such as 3 averaged with high values such as 31997 should average to zero
+      if (smoothAzimuthReading > STEPS_IN_FULL_CIRCLE / 2 && newazimuthReading < STEPS_IN_FULL_CIRCLE / 4)
+      {
+        newazimuthReading += STEPS_IN_FULL_CIRCLE;
+      }
+      else if (newazimuthReading > STEPS_IN_FULL_CIRCLE / 2 && smoothAzimuthReading < STEPS_IN_FULL_CIRCLE / 4)
+      {
+        smoothAzimuthReading += STEPS_IN_FULL_CIRCLE;
+      }
+      if (smoothAltitudeReading > STEPS_IN_FULL_CIRCLE / 2 && newAltitudeReading < STEPS_IN_FULL_CIRCLE / 4)
+      {
+        newAltitudeReading += STEPS_IN_FULL_CIRCLE;
+      }
+      else if (newAltitudeReading > STEPS_IN_FULL_CIRCLE / 2 && smoothAltitudeReading < STEPS_IN_FULL_CIRCLE / 4)
+      {
+        smoothAltitudeReading += STEPS_IN_FULL_CIRCLE;
+      }
+
+      // Second, to reduce jittering without making responsiveness slow:
+      // When the new readings are less than 0.5 degrees off from the old readings, use 0.05 * EMA_WEIGHT as the alpha, for a highly smoothed result
+      if (abs(newazimuthReading - smoothAzimuthReading) < STEPS_IN_FULL_CIRCLE / 720)
+      {
+        smoothAzimuthReading = newazimuthReading * 0.05 * EMA_WEIGHT + ((1 - 0.05 * EMA_WEIGHT) * smoothAzimuthReading);
+      }
+      else          // When the new readings are more than 0.5 degrees off from the old readings, the regular EMA_WEIGHT as the alpha, fast, responsive user experience
+      {
+        smoothAzimuthReading = newazimuthReading * EMA_WEIGHT + ((1 - EMA_WEIGHT) * smoothAzimuthReading);
+      }
+      // Repeat for altitude: When the new readings are less than 0.5 degrees off from the old readings, use 0.05 * EMA_WEIGHT as the alpha, for a highly smoothed result
+      if (abs(newAltitudeReading - smoothAltitudeReading) < STEPS_IN_FULL_CIRCLE / 720)
+      {
+        smoothAltitudeReading = newAltitudeReading * EMA_WEIGHT * 0.05 + ((1 - EMA_WEIGHT * 0.05) * smoothAltitudeReading);
+      }
+      else    // Repeat for altitude: When the new readings are more than 0.5 degrees off from the old readings, the regular EMA_WEIGHT as the alpha, fast, responsive user experience
+      {
+        smoothAltitudeReading = newAltitudeReading * EMA_WEIGHT + ((1 - EMA_WEIGHT) * smoothAltitudeReading);
+      }
+
+      // if values exceed the encoder scale, fix them (for example: 32002 becomes 00002)
+      if (smoothAzimuthReading > STEPS_IN_FULL_CIRCLE)
+      {
+        smoothAzimuthReading -= STEPS_IN_FULL_CIRCLE;
+      }
+      if (smoothAltitudeReading > STEPS_IN_FULL_CIRCLE)
+      {
+        smoothAltitudeReading -= STEPS_IN_FULL_CIRCLE;
+      }
+    }
+};
+
+IMU imu;
+
 void setup()
 {
-  // Setup diagnostic led:
-  pinMode(led, OUTPUT);
   Serial.begin(115200);
   Serial.println("\nESP266 boot");
-  setup_wifi();
 
-  Wire.begin(0, 2); // connect D3(GPIO_0) to sensor's SDA, connect D4(GPIO_2) to sensor's SCL, and connect Sensor "CS" to High!!
-  delay(500);
+  Wire.begin(0, 2);     // connect D3(GPIO_0) to sensor's SDA, connect D4(GPIO_2) to sensor's SCL
+  //  i2cscan();        // uncomment this if you are having I2C problems (quality of solder contacts, lack of pull-up resistors)
 
-  setup_accelerometer();
-  setup_compass();
+  WiFi.mode(WIFI_AP);
+  IPAddress ip(1, 2, 3, 4);     // The "telescope IP address" that Skysafari should connect to is 1.2.3.4 which is easy to remember.
+  IPAddress gateway(1, 2, 3, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  WiFi.softAPConfig(ip, gateway, subnet);
+  WiFi.softAP(WiFi_Access_Point_Name);
+
+  IPAddress myIP = WiFi.softAPIP();
+
+  // Apply compass calibration values:
+  //      Min: -336   -368   -239  Max M:    363, 316, 367
+  // alt: Min: -320   -359   -227  Max M:    348, 307, 356
+  imu.m_min = (LSM303::vector<int16_t>) {-336, -368, -239};
+  imu.m_max = (LSM303::vector<int16_t>) {+363, +316, +367};
+  imu.init();
+  imu.enableDefault();
+
+  Serial.println("IMU ok");
+  // tcp listener to receive incoming connections from Skysafari:
+  server.begin();
+  server.setNoDelay(true);
 }
 
-/* The typical Arduino loop function: */
+long before, after;
 void loop()
 {
+#ifdef TIMEPROFILE
+  after = millis();
+  if (after - before > 0)
+  {
+    Serial.print("TIME: ");
+    Serial.println((after - before));
+  }
+#endif
   attendTcpRequests();  // gets priority to prevent timeouts on Skysafari. Measured AVG execution time = 18ms
+  yield();
 
   if (millis() - last_measurement > MEASUREMENT_PERIOD) // only take new measurements if enough time has elapsed.
   {
-    performAltitudeMeasurement();  // avg exec takes 8ms
-    performAzimuthMeasurement();   // avg exec takes 1ms
+    //    Serial.println("reading IMU");
+    imu.read();
+    //    Serial.println("IMU read");
+    imu.calculatePosition();
     last_measurement = millis();
   }
+
+#ifdef TIMEPROFILE
+  before = millis();
+#endif
   yield();  // altough ESP8266 is supposed to do its work background TCP/wiFi after each loop, yieldig here can't hurt
-}
-
-/**
-   Magnetometer setup using the HMC58X3 library.
-   The Arduino HMC58X3 library must be modified in order to work with ESP8266, because the ESP8266 is 32 bits.
-   The fix is simple: edit the library's HMC58X3.cpp and HMC58X3.h, replacing all occurrences of "int" with "int16_t"
-*/
-void setup_compass()
-{
-  Serial.println("\nSetting up Compass");
-  compass.init(false);      // initialize compass in single mode conversion
-  compass.calibrate(1, 32); // calibrate scale using in-built, known, current induced magnetic field, default gain, 32 samples
-  compass.setMode(0);       // Single mode conversion was used in scale calibration, now set continuous mode.
-
-  // initialize the offset calibration variables:
-  maxX = maxY = -10000;
-  minX = minY = 10000;
-  Serial.println("\nCompass ready. Do at least one full rotation to calibrate");
-}
-
-/**
-   Accelerometer setup.
-   Basic testing of MMA7455 and 2G sensitivity selection
-*/
-void setup_accelerometer()
-{
-  Serial.println("\nTesting MMA7455 accelerometer");
-
-  unsigned char c;
-  do
-  {
-    Wire.beginTransmission(MMA7455_ADDRESS);
-    int error = Wire.write(MMA7455_MODE_CONTROL);
-    error = Wire.write(MMA7455_2G_MODE);  //Set Sensitivity to 2g
-    error = Wire.endTransmission();
-
-    delay(500);
-    // status verification check:
-    c = readMMA7455(MMA7455_STATUS);
-    Serial.println(c);
-    delay(500);
-  }
-  while (!bitRead(c, MMA7455_DRDY));  // we want to stop here if we dont get the ready signal from the 7455 accelerometer
-  Serial.print("OK");
-}
-
-void setup_wifi()
-{
-  Serial.print("\nAttempting to connect to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    digitalWrite(led, HIGH); // the led will blink while WIFI connection is attempted
-    delay(250);
-    digitalWrite(led, LOW);
-    delay(250);
-  }
-  Serial.print("\nConnected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  server.begin();
-  server.setNoDelay(true);
 }
 
 void attendTcpRequests()
@@ -215,211 +251,86 @@ void attendTcpRequests()
   // check for new or lost connections:
   if (server.hasClient())
   {
+    Serial.println("hasClient!");
     if (!remoteClient || !remoteClient.connected())
     {
       if (remoteClient)
       {
+        Serial.print("Client Disconnected\n");
         remoteClient.stop();
       }
       remoteClient = server.available();
-      remoteClient.flush();
+      //Serial.print("Inbound connection from: ");
+      Serial.println(remoteClient.remoteIP());
+      //  remoteClient.flush();
       remoteClient.setNoDelay(true);
     }
   }
 
   // when we have a new incoming connection from Skysafari:
-  if (remoteClient.available())
+  while (remoteClient.available())
   {
     byte skySafariCommand = remoteClient.read();
 
     if (skySafariCommand == 81)  // 81 is ascii for Q, which is the only command skysafari sends to "basic encoders"
     {
       char encoderResponse[20];
-      int iAzimuthReading = round(azimuthReading);
-      int iAltitudeReading = round(altitudeReading);
-      sprintf(encoderResponse, "%i\t%i", iAzimuthReading, iAltitudeReading);
+      int iAzimuthReading = imu.smoothAzimuthReading;
+      int iAltitudeReading = imu.smoothAltitudeReading;
+      sprintf(encoderResponse, "%i\t%i\t\n", iAzimuthReading, iAltitudeReading);
+
+      Serial.println(encoderResponse);
+
       remoteClient.println(encoderResponse);
+    }
+    else
+    {
+      Serial.print("*****");
+      Serial.println(skySafariCommand);
     }
   }
 }
 
-/**
-   Method to obtain the azimuth orientation of the scope from the HMC58X3 magnetometer.
-   This code keeps account of the observed maximum and minumum values for XY axis in order to remain calibrated.
-   This code requires the magetic sensor to be horizontal (parallel to the ground), not attached to the telescope's OTA.
-*/
-void performAzimuthMeasurement()
+
+void i2cscan()
 {
-  int16_t ix, iy, iz;
-  compass.getValues(&ix, &iy, &iz); // read as int values from HMC58X3
+  byte error, address;
+  int nDevices;
 
-  // update max and min and adjust offset calculations as device is used:
-  if (ix > maxX  && ix < 10000) {  // 10000 limit is to ignore a readings that can be caused by cable/wiring issues.
-    maxX = ix;
-  }
-  if (ix < minX && ix > -10000) {
-    minX = ix;
-  }
-  if (iy > maxY && iy < 10000) {
-    maxY = iy;
-  }
-  if (iy < minY && iy > -1000) {
-    minY = iy;
-  }
-  // notice we ignored Z, so for this to work the magnetometer needs to be horizontal. This code does not do tilt calibration for compass.
+  Serial.println("Scanning for I2C devices");
 
-  // update offset and scale coefficients:
-  float compassOfssetX = (float)maxX - (float)(maxX  - minX) / 2.0;
-  float compassOfssetY = (float)maxY - (float)(maxY - minY) / 2.0;
-  float scaleY = 1.0;
-  if ((maxY - minY) > 0 && (maxX - minX) > 0)
+  nDevices = 0;
+  for (address = 1; address < 127; address++ )
   {
-    scaleY  = (float)(maxX - minX) / (float)(maxY - minY);
+    digitalWrite(1, LOW);
+    // The i2c_scanner uses the return value of the Write.endTransmisstion to see if a device did acknowledge to the address.
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0)
+    {
+      digitalWrite(1, HIGH);
+      Serial.print("I2C device found at address 0x");
+      if (address < 16) { Serial.print("0"); }
+      Serial.print(address, HEX);
+      Serial.println("  !");
+
+      delay(5000);
+
+      nDevices++;
+    }
+    else if (error == 4)
+    {
+      Serial.print("Unknown error at address 0x");
+      if (address < 16) {Serial.print("0");}
+      Serial.println(address, HEX);
+    }
   }
-
-  // apply offset and scale coefficients to current measurement:
-  float fx = (float)ix - compassOfssetX;
-  float fy = ((float)iy - (float)compassOfssetY) * scaleY;
-
-  // Calculating the heading requires the magnetometer sensor to be close to horizontal, so attach it to the mount, not the telescope.
-  // That's why separate sensors are used, instead of an integrated IMU.
-  float heading = atan2(fy, fx) + LOCAL_MAGNETIC_DECLINATION;
-
-  heading -= M_PI / 2; // the compass outputs 90º at north, so we substract 90º (PI/2) to offset the scale to zero, which is what Skysafari expects for north
-  if (heading < 0.0)
+  if (nDevices == 0)
   {
-    heading += 2 * M_PI;    // atan2 produces negative values for west side, we add 360º (2*PI) to put them in the scale Skysafari's expects for west
+    Serial.println("No I2C devices found\n");
+    delay(10000);
   }
-
-  float newazimuthReading = heading * RADIAN_TO_STEPS;
-
-  // atan returns negative for angles > 180 degrees, lets map them to the proper encoder scale:
-  if (newazimuthReading < 0)
-  {
-    newazimuthReading += STEPS_IN_FULL_CIRCLE;
-  }
-
-  // Begin Smoothing algotithm:
-  // First, a special trick for averaging around North, where 3 vs 3997 should average to zero
-  if (azimuthReading > STEPS_IN_FULL_CIRCLE / 2 && newazimuthReading < STEPS_IN_FULL_CIRCLE / 4)
-  {
-    newazimuthReading += STEPS_IN_FULL_CIRCLE;
-  }
-  else if (newazimuthReading > STEPS_IN_FULL_CIRCLE / 2 && azimuthReading < STEPS_IN_FULL_CIRCLE / 4)
-  {
-    azimuthReading += STEPS_IN_FULL_CIRCLE;
-  }
-
-  // now lets apply the exponential moving average to the historic value and the new reading:
-  azimuthReading = newazimuthReading * AZ_EMA_WEIGHT + ((1 - AZ_EMA_WEIGHT) * azimuthReading);
-
-  // if values exceed the encoder scale, fix them (for example: 4002 becomes 0002)
-  if (azimuthReading > STEPS_IN_FULL_CIRCLE)
-  {
-    azimuthReading -= STEPS_IN_FULL_CIRCLE;
-  }
-}
-
-/**
-   Method to obtain the Altitude inclination of the scope from the MMA7455 accelerometer.
-   This code needs previously measured maximum and minimum values for X and Y.
-   Uncomment the marked code to find those values, put them in AZminX, AZmaxX, AZminY, AZmaxY, and comment back the code.
-   
-   Notice this code uses X and Y but not Z. This means the MMA7455 accelerometer is meant to be placed sideways on the telescope OTA (Z pointing horizontally)
-*/
-void performAltitudeMeasurement()
-{
-  int16_t x, y;
-  x = readMMA7455(MMA7455_X_OUT);
-  y = readMMA7455(MMA7455_Y_OUT);
-
-/*
-// Uncomment these lines to perform a one time calibration of accelerometer:
-calibratingX = calibratingX * 0.9 + ((float)x)*0.1;  // smoothing, because for calibration use, repeatable max values are much better than outlier max values.
-calibratingY = calibratingY * 0.9 + ((float)y)*0.1;  // smoothing, because for calibration use, repeatable max values are much better than outlier max values.
-if (calibratingX > ALmaxX)
-{
-  ALmaxX = calibratingX;
-}
-else if (calibratingX < ALminX)
-{
-  ALminX = calibratingX;
-}
-if (calibratingY > ALmaxY)
-{
-  ALmaxY = y;
-}
-if (calibratingY < ALminY)
-{
-  ALminY = calibratingY;
-}
-  Serial.print("X=");
-  Serial.print(x);
-  Serial.print(" minX=");
-  Serial.print(ALminX);
-  Serial.print(" maxX=");
-  Serial.print(ALmaxX);
-  Serial.print(" Y=");
-  Serial.print(y);
-  Serial.print(" minY=");
-  Serial.print(ALminY);
-  Serial.print(" maxY=");
-  Serial.println(ALmaxY);
-  if (ALmaxX == ALminX) {ALmaxX = -100; ALminX =100;}   // these are just to prevent a division by zero while calibrating;
-  if (ALmaxY == ALminY) {ALmaxY = -100; ALminY =100;}   // these are just to prevent a division by zero while calibrating;
-// <End of Calibration Code>
-*/
-  
-  //  x = map(x, ALminX, ALmaxX, -1000, 1000);    // I inlined the map() code to use floats for a little bit more precision:
-  float fx = 2000.0 * ((float)x - (float)ALminX) / ((float)ALmaxX - (float)ALminX) - 1000.0; 
-  //  y = map(y, ALminY, ALmaxY, -1000, 1000);    // I inlined the map() code to use floats for a little bit more precision:
-  float fy = 2000.0 * ((float)y - (float)ALminY) / ((float)ALmaxY - (float)ALminY) - 1000.0; 
-
-  // calculate the angle from the measurements:
-  double radianAngle = atan2(fx, fy);
-  // convert angle from radians to encoder steps:
-  float newAltitudeReading = radianAngle * RADIAN_TO_STEPS;   
-
-  // atan returns negative for angles > 180 degrees, lets map them to the proper encoder scale:
-  if (newAltitudeReading < 0)
-  {
-    newAltitudeReading += STEPS_IN_FULL_CIRCLE;
-  }
-
-  // Begin Smoothing algotithm:
-  // First, a special trick for averaging around the horizon, where 3 vs 3997 should average to zero:
-  if (altitudeReading > STEPS_IN_FULL_CIRCLE / 2 && newAltitudeReading < STEPS_IN_FULL_CIRCLE / 4)
-  {
-    newAltitudeReading += STEPS_IN_FULL_CIRCLE;
-  }
-  else if (newAltitudeReading > STEPS_IN_FULL_CIRCLE / 2 && altitudeReading < STEPS_IN_FULL_CIRCLE / 4)
-  {
-    altitudeReading += STEPS_IN_FULL_CIRCLE;
-  }
-
-  // now lets apply the exponential moving average to the historic value and the new reading:
-  altitudeReading = newAltitudeReading * ALT_EMA_WEIGHT + ((1 - ALT_EMA_WEIGHT) * altitudeReading);
-
-  // if values exceed the encoder scale, fix them (for example: 4002 becomes 0002). Skysafari doesn't seem to need it but lets keep things neat
-  if (altitudeReading > STEPS_IN_FULL_CIRCLE)
-  {
-    altitudeReading -= STEPS_IN_FULL_CIRCLE;
-  }
-}
-
-/**
- * Simplme method to read a register from the MMA7455 accelerometer
- */
-signed char readMMA7455(byte address)
-{
-  Wire.beginTransmission(MMA7455_ADDRESS);
-  Wire.write(address);
-  Wire.endTransmission();
-  Wire.beginTransmission(MMA7455_ADDRESS);
-  Wire.requestFrom(MMA7455_ADDRESS, 1);
-  while (Wire.available())   // slave may send less than requested
-  {
-    signed char c = Wire.read();    // receive a byte as signed character
-    return c;
-  }
+  else
+    Serial.println("done");
 }
