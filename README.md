@@ -26,6 +26,7 @@ This is how the device looks when attached to a lightweight telescope:
 The Circuit is very simple, and looks like this:
 
 ![alt text](https://raw.githubusercontent.com/vlaate/vladsc/master/IMG_20170522_073117.jpg "Finished look")
+(Plössl eyepiece for scale)
 
 These are the components to build it:
 * Microcontroller: ESP8266 development board (a.k.a. "NodeMCU", or "12E"). Tested with [HiLetgo](https://www.amazon.com/gp/product/B010O1G1ES) brand.
