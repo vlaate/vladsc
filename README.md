@@ -41,15 +41,15 @@ The sensor should be attached sideways (Z axis horizontal) to the telescope opti
 
 Wiring is simple:
 
-ESP8266 pinout:
+### ESP8266 pinout:
      SDA = GPIO2 = PIN_D4   (use 3.3K pullup to VCC)
      SCL = GPIO0 = PIN_D3   (use 3.3K pullup to VCC)
 
-LSM303 pinout:
+### LSM303 pinout:
      SDA, SCL and GND: matching the ESP8266
      VCC = 3V3 pin on the ESP8266
 
-ESP-01 version powered with AAA batteries:
+### ESP-01 version powered with AAA batteries:
     0.1 uF capacitor between VCC and GND pins of the ESP-01.
     MT3608 voltage booster, to raise 2xAA (or 2xAAA) battery voltage to 3.3V
     1000 uF capacitor between the MT3608 VCC and GND outputs, to deal with the power consumption spikes of the ESP-01
