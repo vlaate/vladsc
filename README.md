@@ -54,6 +54,6 @@ Wiring is simple:
 ### ESP-01 version powered with AAA batteries:
 ```
  MT3608 voltage booster, to raise 2xAA (or 2xAAA) battery voltage to 3.3V 
- OptionalOptional: 0.1 uF capacitor between VCC and GND pins of the ESP-01
  1000 uF capacitor to deal with the power consumption spikes of the ESP-01
+ Optional: 0.1 uF capacitor between VCC and GND pins of the ESP-01
  ```
