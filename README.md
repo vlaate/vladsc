@@ -60,7 +60,7 @@ Wiring is simple:
 
 ## Notes
 
-Please notice in the pictures, that the microcontroller (ESP-01) and the batteries are inside one small box, and the sensor (LSM303) is on a separate tiny box. This is required, because the electromagnetic fields from the batteries and from the WiFi antenna would produce too much interference in the magnetometer if they were in the same box. I measured 7cm to be the very minimum distance the magnetometer needs to be awat from a AA battery.
+Please notice in the pictures, that the microcontroller (ESP-01) and the batteries are inside one small box, and the sensor (LSM303) is on a separate tiny box. This is required, because the electromagnetic fields from the batteries and from the WiFi antenna would produce too much interference in the magnetometer if they were in the same box. I measured 7cm to be the absolute minimum distance the magnetometer needs to be away from any AA battery.
 
 I connected both boxes using RJ9 terminals and black coiled phone cable, just because it looks good (like the hand controller typical of commercial GoTo telescopes). You can use UTP cable, dupont rainbow cable just the same.
 
