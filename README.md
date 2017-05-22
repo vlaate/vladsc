@@ -12,9 +12,11 @@ This project is an implementation of a simple Digital Setting Circles that achie
 
 In order to achieve the above, the following sacrifices had to be made:
 * **Very** Low Accuracy, because of the use of accelerometer and magnetometer sensors instead of optical encoders, the high resolution of optical encoders is lost, along with their high precision and repeatability.
-* Because of the above, it's best used with a low magnification eyepiece that provides a *True Field Of View* of at least 2º.
+* Because of the above, it's best used with a low magnification eyepiece that provides a *True Field Of View* of at least 1º.
 * It's more of an aiding device for exploring the sky via star hopping, than a "push to" feature to zero in on difficult sky objects.
-* One star alignment with SkySafari is critical, so some basic knowledge of a sky object to align with is necessary (moon, Orion's belt, Sirius, etc).
+* Star alignment with SkySafari is critical, so some basic knowledge of a sky object to align with is necessary (moon, Orion's belt, Sirius, etc).
+
+This is how the device looks when attached to a lightweight telescope:
 
 ![alt text](https://raw.githubusercontent.com/vlaate/vladsc/master/IMG_20170522_072847.jpg "Finished look")
 
