@@ -29,7 +29,7 @@ The Circuit is very simple, and looks like this:
 (Plössl eyepiece for scale)
 
 These are the components to build it:
-* Microcontroller: ESP8266 development board (a.k.a. "NodeMCU", or "12E"). Tested with [HiLetgo](https://www.amazon.com/gp/product/B010O1G1ES) brand.
+* Microcontroller: ESP8266 development board (a.k.a. "NodeMCU", or "12E"). Tested with [HiLetgo](https://www.amazon.com/gp/product/B010O1G1ES) brand, or ESP-01 for the final "miniaturized" build.
 * Accelerometer+Magnetometer: LSM303DLHC sensor module, like [this](https://www.aliexpress.com/item/1-pcs-GY-511-LSM303DLHC-Module-E-Compass-3-Axis-Accelerometer-3-Axis-Magnetometer-Module-Sensor/1956617486.html) one.
 * Two resistors, to pull-up the I2C bus, tested with 3.3k Ohm.
 * USB Power bank (for the NodeMCU version) or a voltage buck/boost + AAA batteries (for the ESP-01)
