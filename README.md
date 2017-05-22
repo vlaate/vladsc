@@ -19,7 +19,7 @@ In order to achieve the above, the following sacrifices had to be made:
 ![alt text](https://raw.githubusercontent.com/vlaate/vladsc/master/IMG_20170522_072847.jpg "Finished look")
 
 
-##The Hardware
+## The Hardware
 
 The Circuit is very simple, and looks like this:
 
