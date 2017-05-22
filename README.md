@@ -25,7 +25,7 @@ This is what the device looks like when attached to a lightweight 90mm telescope
 
 The Circuit is very simple, and looks like this:
 
-![alt text](https://raw.githubusercontent.com/vlaate/vladsc/master/IMG_20170522_073117.jpg "Finished look")
+![alt text](https://raw.githubusercontent.com/vlaate/vladsc/master/IMG_20170522_073117.jpg "Inside")
 (Plössl eyepiece for scale)
 
 These are the components to build it:
@@ -40,6 +40,8 @@ These are the components to build it:
 The sensor should be attached sideways (Z axis horizontal) to the telescope optical tube, so that its X and Y readings change with telescope movement, but Z reading remans at or near to zero. It should be aligned so that the Y axis points upwards when the telescope is aimed at Zenith.
 
 Wiring is simple:
+
+![alt text](https://raw.githubusercontent.com/vlaate/vladsc/master/vlaDSC-schematic.png "Schematic")
 
 ### ESP8266 pinout:
      SDA = GPIO2 = PIN_D4   (use 3.3K pullup to VCC)
