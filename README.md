@@ -16,7 +16,7 @@ In order to achieve the above, the following sacrifices had to be made:
 * It's more of an aiding device for exploring the sky via star hopping, than a "push to" feature to zero in on difficult sky objects.
 * Star alignment with SkySafari is critical, so some basic knowledge of a sky object to align with is necessary (moon, Orion's belt, Sirius, etc).
 
-This is how the device looks when attached to a lightweight telescope:
+This is what the device looks like when attached to a lightweight 90mm telescope:
 
 ![alt text](https://raw.githubusercontent.com/vlaate/vladsc/master/IMG_20170522_072847.jpg "Finished look")
 
@@ -51,5 +51,5 @@ LSM303 pinout:
 
 ESP-01 version powered with AAA batteries:
     0.1 uF capacitor between VCC and GND pins of the ESP-01.
-    MT3608 voltage booster, to raise 2xAA (or 2xAAA) voltage to 3.3V
+    MT3608 voltage booster, to raise 2xAA (or 2xAAA) battery voltage to 3.3V
     1000 uF capacitor between the MT3608 VCC and GND outputs, to deal with the power consumption spikes of the ESP-01
