@@ -57,3 +57,11 @@ Wiring is simple:
  1000 uF capacitor to deal with the power consumption spikes of the ESP-01
  Optional: 0.1 uF capacitor between VCC and GND pins of the ESP-01
  ```
+
+## Notes
+
+Please notice in the pictures, that the microcontroller (ESP-01) and the batteries are inside one small box, and the sensor (LSM303) is on a separate tiny box. This is required, because the electromagnetic fields from the batteries and from the WiFi antenna would produce too much interference in the magnetometer if they were in the same box. I measured 7cm to be the very minimum distance the magnetometer needs to be awat from a AA battery.
+
+I connected both boxes using RJ9 terminals and black coiled phone cable, just because it looks good (like the hand controller typical of commercial GoTo telescopes). You can use UTP cable, dupont rainbow cable just the same.
+
+The ESP-01 is power hungry (I measured 147mA @3.3V), this makes battery life to be rather short on 2xAAA batteries (some 4 to 6 hours) mainly because alkaline 2xAAA will be unable to keep providing that current halfway before they are truly, completely discharged. I advise to use rechargeable batteries (flatter discharge curve), and also AA size if possible.
